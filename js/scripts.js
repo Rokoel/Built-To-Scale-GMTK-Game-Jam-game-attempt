@@ -6,6 +6,7 @@ const friction = 0.9;
 var character;
 var platforms;
 var doorTriggers;
+var boxes;
 
 const keys = {
     a: false,
@@ -22,94 +23,100 @@ class Character {
         this.color = color;
         this.velocityX = 0;
         this.velocityY = 0;
-        this.accelerationX = 0;
         this.accelerationY = gravity;
         this.onGround = false;
-        this.wasJustScaled = false;
+        this.scale = 1;
         this.speed = 5;
         this.jumpPower = 15;
     }
 
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+    setScale(newScale) {
+        const centerX = this.x + this.width / 2;
+        const bottomY = this.y + this.height;
+        
+        this.width *= newScale / this.scale;
+        this.height *= newScale / this.scale;
+        
+        this.x = centerX - this.width / 2;
+        this.y = bottomY - this.height;
+        
+        this.scale = newScale;
+        this.speed *= Math.sqrt(newScale / this.scale);
+        this.jumpPower *= Math.sqrt(newScale / this.scale);
     }
 
-    update(platforms) {
+    update(platforms, boxes) {
         this.velocityX *= friction;
         this.velocityY += this.accelerationY;
-        if (this.wasJustScaled) {
 
-        }
-    
-        // Apply horizontal movement
         this.x += this.velocityX;
-        this.handleHorizontalCollisions(platforms);
-    
-        // Apply vertical movement
         this.y += this.velocityY;
-        this.handleVerticalCollisions(platforms);
-    
-        // Ensure character stays within the canvas horizontally
+
+        this.resolveCollisions(platforms.concat(boxes));
+
         if (this.x < 0) this.x = 0;
         if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
-    
-        // Check if the character is on the ground
-        this.onGround = this.checkOnGround(platforms);
+
+        this.onGround = this.checkOnGround(platforms.concat(boxes));
     }
 
-    isCollidingWith(platform) {
-        return (
-            this.x < platform.x + platform.width &&
-            this.x + this.width > platform.x &&
-            this.y < platform.y + platform.height &&
-            this.y + this.height > platform.y
-        );
+    resolveCollisions(objects) {
+        for (let object of objects) {
+            const overlap = this.getOverlap(object);
+            if (overlap.width > 0 && overlap.height > 0) {
+                if (overlap.width < overlap.height) {
+                    // Resolve horizontal collision
+                    if (this.x < object.x) {
+                        this.x -= overlap.width;
+                    } else {
+                        this.x += overlap.width;
+                    }
+                    this.velocityX = 0;
+                } else {
+                    // Resolve vertical collision
+                    if (this.y < object.y) {
+                        this.y -= overlap.height;
+                        this.onGround = true;
+                    } else {
+                        this.y += overlap.height;
+                    }
+                    this.velocityY = 0;
+                }
+
+                if (object.canBePushed) {
+                    // Push the object
+                    if (overlap.width < overlap.height) {
+                        object.velocityX += (this.x < object.x) ? overlap.width : -overlap.width;
+                    } else {
+                        object.velocityY += (this.y < object.y) ? overlap.height : -overlap.height;
+                    }
+                }
+            }
+        }
     }
 
-    handleHorizontalCollisions(platforms) {
-        platforms.forEach(platform => {
-            if (this.isCollidingWith(platform)) {
-                if (this.velocityX > 0) {
-                    this.x = platform.x - this.width;
-                } else if (this.velocityX < 0) {
-                    this.x = platform.x + platform.width;
-                }
-                this.velocityX = 0;
-            }
-        });
+    getOverlap(object) {
+        const overlapX = Math.min(this.x + this.width, object.x + object.width) - Math.max(this.x, object.x);
+        const overlapY = Math.min(this.y + this.height, object.y + object.height) - Math.max(this.y, object.y);
+        return { width: Math.max(0, overlapX), height: Math.max(0, overlapY) };
     }
-    
-    handleVerticalCollisions(platforms) {
-        platforms.forEach(platform => {
-            if (this.isCollidingWith(platform)) {
-                if (this.velocityY > 0) {
-                    this.y = platform.y - this.height;
-                    this.onGround = true;
-                } else if (this.velocityY < 0) {
-                    this.y = platform.y + platform.height;
-                }
-                this.velocityY = 0;
-            }
-        });
-    }
-    
-    checkOnGround(platforms) {
+
+    checkOnGround(objects) {
         const feetY = this.y + this.height + 1;
-        return platforms.some(platform => 
-            this.x < platform.x + platform.width &&
-            this.x + this.width > platform.x &&
-            feetY >= platform.y &&
-            feetY <= platform.y + platform.height
+        return objects.some(object => 
+            this.x < object.x + object.width &&
+            this.x + this.width > object.x &&
+            feetY >= object.y &&
+            feetY <= object.y + object.height
         );
     }
 
     moveLeft() {
-        this.velocityX = Math.max(this.velocityX - 0.5, -this.speed);
+        this.velocityX = -this.speed;
     }
     
     moveRight() {
-        this.velocityX = Math.min(this.velocityX + 0.5, this.speed);
+        this.velocityX = this.speed;
     }
 
     jump() {
@@ -117,6 +124,27 @@ class Character {
             this.velocityY = -this.jumpPower;
             this.onGround = false;
         }
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    drawDebug(ctx) {
+        // Draw bounding box
+        ctx.strokeStyle = 'red';
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+
+        // Draw velocity vector
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+        ctx.lineTo(
+            this.x + this.width / 2 + this.velocityX * 10,
+            this.y + this.height / 2 + this.velocityY * 10
+        );
+        ctx.strokeStyle = 'blue';
+        ctx.stroke();
     }
 }
 class Platform {
@@ -126,6 +154,7 @@ class Platform {
         this.width = width;
         this.height = height;
         this.color = color;
+        this.canBePushed = false;
     }
 
     draw() {
@@ -213,6 +242,91 @@ class DoorTrigger {
         this.entryPoint = null;
     }
 }
+class Box {
+    constructor(x, y, width, height, color, pushModifier = 0.9) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.color = color;
+        this.velocityX = 0;
+        this.velocityY = 0;
+        this.accelerationY = gravity;
+        this.onGround = false;
+        this.canBePushed = true;
+        this.pushModifier = pushModifier;
+    }
+
+    update(platforms, boxes) {
+        this.velocityX *= friction;
+        this.velocityY += this.accelerationY;
+
+        this.x += this.velocityX;
+        this.y += this.velocityY;
+
+        this.resolveCollisions(platforms.concat(boxes.filter(box => box !== this)));
+
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+        this.onGround = this.checkOnGround(platforms.concat(boxes.filter(box => box !== this)));
+    }
+
+    resolveCollisions(objects) {
+        for (let object of objects) {
+            const overlap = this.getOverlap(object);
+            if (overlap.width > 0 && overlap.height > 0) {
+                if (overlap.width < overlap.height) {
+                    // Resolve horizontal collision
+                    if (this.x < object.x) {
+                        this.x -= overlap.width;
+                    } else {
+                        this.x += overlap.width;
+                    }
+                    if (object.canBePushed) {
+                        object.velocityX += this.velocityX * this.pushModifier;
+                    } else {
+                        this.velocityX = 0;
+                    }
+                } else {
+                    // Resolve vertical collision
+                    if (this.y < object.y) {
+                        this.y -= overlap.height;
+                        this.onGround = true;
+                    } else {
+                        this.y += overlap.height;
+                    }
+                    if (object.canBePushed) {
+                        object.velocityY += this.velocityY * this.pushModifier;
+                    } else {
+                        this.velocityY = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    getOverlap(object) {
+        const overlapX = Math.min(this.x + this.width, object.x + object.width) - Math.max(this.x, object.x);
+        const overlapY = Math.min(this.y + this.height, object.y + object.height) - Math.max(this.y, object.y);
+        return { width: Math.max(0, overlapX), height: Math.max(0, overlapY) };
+    }
+
+    checkOnGround(objects) {
+        const feetY = this.y + this.height + 1;
+        return objects.some(object => 
+            this.x < object.x + object.width &&
+            this.x + this.width > object.x &&
+            feetY >= object.y &&
+            feetY <= object.y + object.height
+        );
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+}
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'a') keys.a = true;
@@ -233,17 +347,17 @@ function gameLoop() {
     if (keys.d) character.moveRight();
     if (keys.w) character.jump();
 
-    platforms.forEach(platform => {
-        platform.draw();
-    });
+    boxes.forEach(box => box.update(platforms, boxes));
+    character.update(platforms, boxes);
 
+    platforms.forEach(platform => platform.draw(ctx));
+    boxes.forEach(box => box.draw(ctx));
     doorTriggers.forEach(trigger => {
         trigger.checkTrigger(character);
         trigger.draw(ctx);
     });
-
-    character.update(platforms);
-    character.draw();
+    character.draw(ctx);
+    character.drawDebug(ctx);
 
     requestAnimationFrame(gameLoop);
 }
@@ -260,20 +374,18 @@ function initGame() {
         new Platform(900, canvas.height-200, 100, 100, 'grey'),
     ];
     let scaler = new DoorTrigger(700, canvas.height-200, 50, 100, 'horizontal', () => {
-        character.y = character.y - character.height * 0.5;
-        character.width = character.width * 1.5;
-        character.height = character.height * 1.5;
-        character.jumpPower *= 1.1  ;
-        if (scaler.entryPoint == "left") {
-            character.x = scaler.x + scaler.width;
-        }
-        else {
-            character.x = scaler.x - character.width;
-        }
-    })
+        const newScale = 1.5;
+        character.setScale(newScale);
+        character.velocityX = 0;
+        character.velocityY = 0;
+    });
     doorTriggers = [
         scaler
-    ];  
+    ];
+    boxes = [
+        new Box(600, canvas.height - 200, 50, 50, 'brown'),
+        new Box(300, canvas.height - 200, 50, 50, 'brown'),
+    ];
 }
 
 initGame();
