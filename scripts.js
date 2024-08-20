@@ -12,19 +12,19 @@ const gravity = 0.8;
 const friction = 0.9;
 var INITIAL_CANVAS_SIZE;
 
-var scaleUpSound = new Audio('scale-sound.mp3');
-var scaleDownSound = new Audio('scale-down.mp3');
-var clickSound = new Audio('click.mp3');
+var scaleUpSound = new Audio('./scale-sound.mp3');
+var scaleDownSound = new Audio('./scale-down.mp3');
+var clickSound = new Audio('./click.mp3');
 var character;
 var characterSprite = new Image(100, 100);
-characterSprite.src = "../MainChar2.png";
+characterSprite.src = "./main-char-2.png";
 var platforms;
 var platformSprite = new Image(100, 100);
-platformSprite.src = "../Platform.png";
+platformSprite.src = "./platform.png";
 var doorTriggers;
 var boxes;
 var boxesSprite = new Image(100, 100);
-boxesSprite.src = "../Box2.png";
+boxesSprite.src = "./box-2.png";
 
 const keys = {
     a: false,
@@ -568,7 +568,7 @@ class Level {
     }
 }
 
-let backgroundMusic = new Audio('../LoopBgSong.mp3');
+let backgroundMusic = new Audio('./loop-bg-song.mp3');
 
 let musicVolume = 0.5;
 let soundsVolume = 0.5;
@@ -930,7 +930,7 @@ function startGame() {
     playGameSound(clickSound);
     ctx = canvas.getContext('2d');
 
-    var mainFont = new FontFace('builtToScale', 'url(../BUILTTOSCALE.ttf)');
+    var mainFont = new FontFace('builtToScale', 'url(./built-to-scale.ttf)');
     mainFont.load().then(function(font){
         document.fonts.add(font);
         console.log('Font loaded');

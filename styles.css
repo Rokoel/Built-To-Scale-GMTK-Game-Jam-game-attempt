@@ -28,7 +28,7 @@ body {
 
 @font-face {
     font-family: builtToScale;
-    src: url(../BUILTTOSCALE.ttf);
+    src: url(./built-to-scale.ttf);
 }
 
 * {
