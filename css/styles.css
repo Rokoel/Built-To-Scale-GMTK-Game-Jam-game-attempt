@@ -1,3 +1,168 @@
+:root {
+    --button-color: #3d5a80;
+    --button-text-color: #e0fbfc;
+    --bg-color: #98c1d9;
+    --dark-color: #293241;
+    --bright-color: #ee6c4d;
+    --proportional-padding: 2em;
+    --proportional-small-padding: 1em;
+    --proportional-x-small-padding: 0.5em;
+    --proportional-xx-small-padding: 0.25em;
+}
+
 html, body {
     overflow: hidden;
+}
+canvas {
+    background-color: var(--button-text-color);
+    display: block;
+    margin: auto auto;
+    border: solid var(--dark-color) 3px;
+    border-radius: 10px;
+}
+body {
+    display: flex;
+    height: 100vh;
+    background-color: var(--bg-color);
+}
+
+@font-face {
+    font-family: builtToScale;
+    src: url(../BUILTTOSCALE.ttf);
+}
+
+* {
+    font-family: builtToScale; 
+}
+
+button {
+    background-color: transparent;
+    color: var(--dark-color);
+    border: none;
+    margin-top: auto;
+    margin-bottom: auto;
+}
+button.no-bg {
+    background-color: transparent;
+    color: var(--bright-color);
+    border: none;
+    margin-top: auto;
+    margin-bottom: auto;
+}
+button.no-bg:hover, button.no-bg:focus {
+    text-decoration: underline;
+}
+
+.menu {
+    display: flex;
+    width: 90%;
+    height: 90%;
+    margin: auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.menu > * {
+    height: fit-content;
+    padding: var(--proportional-x-small-padding);
+}
+
+#built-to-scale {
+    display: grid;
+    grid-template-rows: 1fr;
+}
+#built-to-scale * {
+    text-align: center;
+    font-size: 500%;
+}
+
+#built-to {
+    color: var(--dark-color);
+}
+#begin-game {
+    font-size: 700%;
+}
+#settings-button, #back-to-main-menu {
+    font-size: 200%;
+    margin: 0;
+}
+#music-volume, #sounds-volume {
+    padding: var(--proportional-padding);
+}
+#settings h1 {
+    color: var(--dark-color);
+    font-size: 500%;
+    margin: 0;
+}
+
+button:hover, button:focus {
+    transform: scale(1.1);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+
+input[type=range] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 1em;
+    background: transparent;
+}
+input[type=range]:focus {
+    outline: none;
+}
+input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 1em;
+    cursor: pointer;
+    background: var(--button-color);
+    border-radius: 3px;
+    border: 3px solid var(--dark-color);
+}
+input[type=range]::-webkit-slider-thumb {
+    border: 3px solid var(--dark-color);
+    border-radius: 3px;
+    height: 2em;
+    width: 2em;
+    background: var(--button-text-color);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transform: translateY(-35%);
+}
+input[type=range]:focus::-webkit-slider-runnable-track {
+    background: var(--button-color);
+}
+input[type=range]::-moz-range-track {
+    width: 100%;
+    height: 1em;
+    cursor: pointer;
+    background: var(--button-color);
+    border-radius: 3px;
+    border: 3px solid var(--dark-color);  
+}
+input[type=range]::-moz-range-thumb {
+    border: 3px solid var(--dark-color);
+    border-radius: 3px;
+    height: 2em;
+    width: 2em;
+    background: var(--button-text-color);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transform: translateY(-35%);
+}
+
+#fadeOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: black;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+    z-index: 1000;
 }

@@ -1,16 +1,30 @@
-var canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const mainMenu = document.getElementById('main-menu');
+const settingsMenu = document.getElementById('settings');
+var canvas = document.getElementById('game-canvas');
+const beginGameButton = document.getElementById('begin-game');
+const settingsButton = document.getElementById('settings-button');
+const backToMainMenuButton = document.getElementById('back-to-main-menu');
+const musicVolumeSlider = document.getElementById('music-volume');
+const soundsVolumeSlider = document.getElementById('sounds-volume');
 
+var ctx;
 const gravity = 0.8;
 const friction = 0.9;
+var INITIAL_CANVAS_SIZE;
+
+var scaleUpSound = new Audio('scale-sound.mp3');
+var scaleDownSound = new Audio('scale-down.mp3');
+var clickSound = new Audio('click.mp3');
 var character;
 var characterSprite = new Image(100, 100);
-characterSprite.src = "../MainChar.png";
+characterSprite.src = "../MainChar2.png";
 var platforms;
+var platformSprite = new Image(100, 100);
+platformSprite.src = "../Platform.png";
 var doorTriggers;
 var boxes;
 var boxesSprite = new Image(100, 100);
-boxesSprite.src = "../Box.png";
+boxesSprite.src = "../Box2.png";
 
 const keys = {
     a: false,
@@ -45,12 +59,15 @@ class Character {
         this.x = centerX - this.width / 2;
         this.y = bottomY - this.height;
         
-        this.scale = newScale;
         this.speed *= Math.sqrt(newScale / this.scale);
-        this.jumpPower *= Math.sqrt(newScale / this.scale);
+        this.jumpPower *= newScale / this.scale;
+        this.scale = newScale;
     }
 
     update(platforms, boxes) {
+        if (keys.a) this.moveLeft();
+        if (keys.d) this.moveRight();
+        if (keys.w) this.jump();
         this.velocityX *= friction;
         this.velocityY += this.accelerationY;
 
@@ -158,18 +175,24 @@ class Character {
     }
 }
 class Platform {
-    constructor(x, y, width, height, color) {
+    constructor(x, y, width, height, sprite, color="") {
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
         this.color = color;
+        this.sprite = sprite;
         this.canBePushed = false;
     }
 
     draw() {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        if (this.color == "") {
+            ctx.drawImage(this.sprite, this.x, this.y, this.width, this.height);
+        }
+        else {
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+        }
     }
 }
 class DoorTrigger {
@@ -250,6 +273,30 @@ class DoorTrigger {
 
     reset() {
         this.triggered = false;
+    }
+}
+class ScalerTrigger extends DoorTrigger {
+    constructor(x, y, width, height, direction, numberOfUses, scaleModifier) {
+        super(x, y, width, height, direction, (entity) => {
+            if (this.numberOfUses >= 1) {
+                entity.setScale(entity.scale * this.scaleModifier);
+                entity.velocityX = 0;
+                entity.velocityY = 0;
+                if (this.scaleModifier >= 1) {
+                    scaleUpSound.play();
+                }
+                else {
+                    scaleDownSound.play();
+                }
+                this.numberOfUses--;
+                this.reset();
+                if (this.numberOfUses === 0) {
+                    this.triggered = true;
+                }
+            }
+        });
+        this.numberOfUses = numberOfUses;
+        this.scaleModifier = scaleModifier;
     }
 }
 class Box {
@@ -373,75 +420,542 @@ class Box {
         ctx.stroke();
     }
 }
+class TextLine {
+    constructor(x, y, contents, color, size, align='left') {
+        this.x = x;
+        this.y = y;
+        this.contents = contents;
+        this.color = color;
+        this.fontSize = size;
+        this.align = align;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.font = this.fontSize + 'px builtToScale';
+        ctx.textAlign = this.align;
+        ctx.fillText(this.contents, this.x, this.y);
+    }
+}
+class Level {
+    constructor(width, height, blockSize) {
+        this.width = width;
+        this.height = height;
+        this.blockSize = blockSize;
+        this.character = null;
+        this.platforms = [];
+        this.boxes = [];
+        this.doorTriggers = [];
+        this.scaleTriggers = [];
+        this.texts = [];
+    }
+
+    static fromASCII(asciiMap, blockSize) {
+        const rows = asciiMap.trim().split('\n');
+        const height = rows.length;
+        const width = rows[0].length;
+        const level = new Level(width, height, blockSize);
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const char = rows[y][x];
+                const [canvasX, canvasY] = level.gridToCanvas(x, y);
+
+                switch (char) {
+                    case '#':
+                        level.platforms.push(new Platform(canvasX, canvasY, blockSize, blockSize, platformSprite));
+                        break;
+                    case 'B':
+                        level.boxes.push(new Box(canvasX, canvasY, blockSize, blockSize, boxesSprite));
+                        break;
+                    case 'C':
+                        level.character = new Character(canvasX, canvasY, blockSize, blockSize, characterSprite);
+                        break;
+                    case 'T':
+                        level.doorTriggers.push(new DoorTrigger(canvasX, canvasY, blockSize, blockSize, 'horizontal', () => {}));
+                        break;
+                    case 'S':
+                        level.scaleTriggers.push(new ScalerTrigger(canvasX, canvasY, blockSize, blockSize, 'horizontal', 1, 1.5));
+                        break;
+                }
+            }
+        }
+
+        return level;
+    }
+
+    gridToCanvas(gridX, gridY) {
+        return [gridX * this.blockSize, gridY * this.blockSize];
+    }
+
+    canvasToGrid(canvasX, canvasY) {
+        return [Math.floor(canvasX / this.blockSize), Math.floor(canvasY / this.blockSize)];
+    }
+
+    reset() {
+        //
+    }
+
+    start(canv) {
+        canv.width = this.width * this.blockSize;
+        canv.height = this.height * this.blockSize;
+    }
+
+    update() {
+        this.boxes.forEach(box => box.update(this.platforms, this.boxes));
+        this.character.update(this.platforms, this.boxes);
+        const allEntities = [this.character, ...this.boxes];
+        this.doorTriggers.forEach(trigger => {
+            trigger.checkTrigger(allEntities);
+        });
+        this.scaleTriggers.forEach(trigger => {
+            trigger.checkTrigger(allEntities);
+        });
+    }
+
+    draw(ctx) {
+        // Draw all objects in the level
+        this.platforms.forEach(platform => platform.draw(ctx));
+        this.texts.forEach(text => text.draw(ctx));
+        this.boxes.forEach(box => box.draw(ctx));
+        this.character.draw(ctx);
+        this.doorTriggers.forEach(trigger => trigger.draw(ctx));
+        this.scaleTriggers.forEach(trigger => trigger.draw(ctx));
+    }
+
+    addObject(type, gridX, gridY, ...params) {
+        if (gridX < 0 || gridX >= this.width || gridY < 0 || gridY >= this.height) {
+            console.error(`Grid coordinates (${gridX}, ${gridY}) out of bounds`);
+            return;
+        }
+    
+        const [canvasX, canvasY] = this.gridToCanvas(gridX, gridY);
+        let newObject = null;
+    
+        switch (type.toLowerCase()) {
+            case 'platform':
+                newObject = new Platform(canvasX, canvasY, this.blockSize, this.blockSize, params[0] || 'grey');
+                this.platforms.push(newObject);
+                break;
+            case 'box':
+                newObject = new Box(canvasX, canvasY, this.blockSize, this.blockSize, params[0] || boxesSprite, params[1] || '');
+                this.boxes.push(newObject);
+                break;
+            case 'character':
+                if (this.character) {
+                    console.warn("Character already exists. Removing old character.");
+                    const oldPos = this.canvasToGrid(this.character.x, this.character.y);
+                }
+                newObject = new Character(canvasX, canvasY, this.blockSize, this.blockSize, params[0] || characterSprite);
+                this.character = newObject;
+                break;
+            case 'doortrigger':
+                newObject = new DoorTrigger(canvasX, canvasY, this.blockSize, this.blockSize, params[0] || 'horizontal', params[1] || (() => {}));
+                this.doorTriggers.push(newObject);
+                break;
+            case 'scaletrigger':
+                newObject = new ScalerTrigger(canvasX, canvasY, this.blockSize, this.blockSize, params[0] || 'horizontal', params[1] || 1, params[2] || 1.5);
+                this.scaleTriggers.push(newObject);
+                break;
+            case 'text':
+                newObject = new TextLine(canvasX, canvasY, params[0] || '', params[1] || '#293241', params[2] || canvas.width / 20, params[3] || 'left');
+                this.texts.push(newObject);
+                break;
+            default:
+                console.error(`Unknown object type: ${type}`);
+                return;
+        }
+    }
+}
+
+let backgroundMusic = new Audio('../LoopBgSong.mp3');
+
+let musicVolume = 0.5;
+let soundsVolume = 0.5;
+
+function showMainMenu() {
+    playGameSound(clickSound);
+    mainMenu.style.display = 'flex';
+    settingsMenu.style.display = 'none';
+    canvas.style.display = 'none';
+}
+
+function showSettings() {
+    playGameSound(clickSound);
+    mainMenu.style.display = 'none';
+    settingsMenu.style.display = 'flex';
+    canvas.style.display = 'none';
+}
+
+function updateMusicVolume() {
+    musicVolume = musicVolumeSlider.value / 100;
+    backgroundMusic.volume = musicVolume;
+}
+
+let isPlayingSampleSound = false;
+let sampleSoundInterval = null;
+function updateSoundsVolume() {
+    soundsVolume = soundsVolumeSlider.value / 100;
+    if (!isPlayingSampleSound) {
+        isPlayingSampleSound = true;
+        playGameSound(scaleUpSound);
+        sampleSoundInterval = setInterval(playGameSound, 500, scaleUpSound);
+    }
+}
+
+function stopSampleSound() {
+    isPlayingSampleSound = false;
+    if (sampleSoundInterval) {
+        clearInterval(sampleSoundInterval);
+        sampleSoundInterval = null;
+    }
+}
+
+function playGameSound(sound) {
+    sound.volume = soundsVolume;
+    sound.currentTime = 0;
+    sound.play();
+}
+
+backToMainMenuButton.addEventListener('click', handleGoBack);
+beginGameButton.addEventListener('click', startGame);
+settingsButton.addEventListener('click', showSettings);
+
+musicVolumeSlider.addEventListener('input', updateMusicVolume);
+soundsVolumeSlider.addEventListener('input', updateSoundsVolume);
+soundsVolumeSlider.addEventListener('mouseup', stopSampleSound);
+soundsVolumeSlider.addEventListener('touchend', stopSampleSound);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'a') keys.a = true;
     if (e.key === 'd') keys.d = true;
     if (e.key === 'w') keys.w = true;
 });
-
 document.addEventListener('keyup', (e) => {
     if (e.key === 'a') keys.a = false;
     if (e.key === 'd') keys.d = false;
     if (e.key === 'w') keys.w = false;
 });
+document.addEventListener('click', startBackgroundMusic, { once: true });
+document.addEventListener('keydown', handleEscapeKey);
+document.addEventListener('keydown', handleBackspace);
+
+musicVolumeSlider.value = musicVolume * 100;
+soundsVolumeSlider.value = soundsVolume * 100;
+
+let musicStarted = false;
+function startBackgroundMusic() {
+    if (!musicStarted) {
+        backgroundMusic.loop = true;
+        backgroundMusic.play().catch(error => {
+            console.log("Audio play failed:", error);
+        });
+        musicStarted = true;
+    }
+}
+
+function handleGoBack() {
+    if (isInGame) {
+        settingsMenu.style.display = 'none';
+        canvas.style.display = 'block';
+    } else {
+        showMainMenu();
+    }
+}
+
+function handleEscapeKey(event) {
+    if (event.key === 'Escape') {
+        if (isInGame && canvas.style.display !== 'none') {
+            showSettings();
+        } else if (isInGame && settingsMenu.style.display !== 'none') {
+            handleGoBack();
+        }
+    }
+}
+
+function fadeInOut(duration, callback) {
+    const halfDuration = duration / 2;
+
+    fadeOverlay.style.transition = `opacity ${halfDuration}ms ease`;
+    fadeOverlay.style.opacity = '1';
+
+    setTimeout(() => {
+        callback();
+        fadeOverlay.style.opacity = '0';
+        setTimeout(() => {}, halfDuration);
+    }, halfDuration);
+}
+
+function handleBackspace(event) {
+    if (event.key === 'Backspace') {
+        levels = generateAndReturnLevels();
+    }
+}
+
+var currentLevel = 0;
+var levels;
+
+function generateAndReturnLevels() {
+    const level1 = Level.fromASCII(`
+######################
+#                  ###
+#                  ###
+#     C               
+######################
+            `, INITIAL_CANVAS_SIZE.width / 15);
+        
+    level1.addObject('text', 2, 2, "A, W AND D TO MOVE", "#293241", INITIAL_CANVAS_SIZE.width / 20, "left");
+    level1.addObject('text', 2, 2.5, "ESC TO ACCESS MENU", "#293241", INITIAL_CANVAS_SIZE.width / 30, "left");
+    level1.addObject('doortrigger', 19, 3, 'horizontal', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+
+    const level2 = Level.fromASCII(`
+######################
+#         #        ###
+#         #           
+#     C               
+######################
+            `, INITIAL_CANVAS_SIZE.width / 15);
+
+    var biggerExit = new DoorTrigger(19*INITIAL_CANVAS_SIZE.width / 15, 2*INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15*2, 'horizontal', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+    level2.doorTriggers.push(biggerExit);
+    level2.addObject('text', 1.2, 2, "THIS IS A SCALE-GATE", "#293241", canvas.width / 20, "left");
+    level2.addObject('text', 1.2, 2.5, "IT SCALES. EVERYTHING.", "#293241", canvas.width / 30, "left");
+    level2.addObject('scaletrigger', 10, 3, 'horizontal', 1, 1.5);
+
+    const level3 = Level.fromASCII(`
+######################
+#       #          ###
+#   C              ###
+# #######          ###
+#         # # # # ####
+#                  ###
+#     #               
+#     #               
+######################
+            `, INITIAL_CANVAS_SIZE.width / 15);
+
+    var biggerExit = new DoorTrigger(19*INITIAL_CANVAS_SIZE.width / 15, 6*INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15*2, 'horizontal', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+    level3.doorTriggers.push(biggerExit);
+    level3.addObject('text', 8.5, 2.5, "1.5", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level3.addObject('text', 1.5, 3.5, "1.5", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level3.addObject('text', 10, 2, "SCALE-FACTOR OF A GATE", "#293241", INITIAL_CANVAS_SIZE.width / 30, "left");
+    level3.addObject('text', 10, 2.5, "WILL USUALLY BE SEEN IN IT", "#293241", INITIAL_CANVAS_SIZE.width / 30, "left");
+    level3.addObject('text', 10, 6, "TO RESET THE LVL,", "#293241", INITIAL_CANVAS_SIZE.width / 30, "left");
+    level3.addObject('text', 10, 7, "PRESS BACKSPACE", "#293241", INITIAL_CANVAS_SIZE.width / 30, "left");
+    level3.addObject('scaletrigger', 8, 2, 'horizontal', 1, 1.5);
+    level3.addObject('scaletrigger', 1, 3, 'vertical', 1, 1.5);
+
+    const level4 = Level.fromASCII(`
+#########################
+#                       #
+#           C           #
+#                       #
+######  ########## ######
+#      # #              #
+#     #  #       #      #
+#        #              #
+### ######      ### #####
+#              #      ###
+#              #      ###
+#              #         
+#########################
+            `, INITIAL_CANVAS_SIZE.width / 15);
+
+    var biggerExit = new DoorTrigger(22*INITIAL_CANVAS_SIZE.width / 15, 11*INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15, INITIAL_CANVAS_SIZE.width / 15, 'horizontal', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+    level4.doorTriggers.push(biggerExit);
+    level4.addObject('text', 10, 2, "A SIMPLE TASK", "#293241", INITIAL_CANVAS_SIZE.width / 20, "left");
+    level4.addObject('text', 6.5, 4.5, "0.9", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level4.addObject('text', 18.5, 4.5, "1.1", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level4.addObject('scaletrigger', 6, 4, 'vertical', 1, 0.7);
+    level4.addObject('scaletrigger', 18, 4, 'vertical', 1, 1.4);
+
+    const level5 = Level.fromASCII(`
+########################
+#                      #
+#                    # #
+#                    # #
+#                    # #
+#######   ############ #
+#                    # #
+#      ###           # #
+# C                  # #
+###################### #
+            `, INITIAL_CANVAS_SIZE.width / 20);
+    level5.addObject('text', 7.5, 5.75, "2", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level5.addObject('text', 9.5, 5.75, "0.5", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level5.addObject('scaletrigger', 7, 5, 'vertical', 1, 2);
+    level5.addObject('scaletrigger', 9, 5, 'vertical', 1, 0.5);
+    level5.addObject('doortrigger', 22, 7, 'vertical', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+
+    const level6 = Level.fromASCII(`
+########################
+#                      #
+#                      #
+#                      #
+#                      #
+#                    # #
+#                    # #
+#                    # #
+# C          B       # #
+###################### #
+            `, INITIAL_CANVAS_SIZE.width / 20);
+    level6.addObject('text', 7.5, 5.75, "THIS IS A BOX", "#293241", INITIAL_CANVAS_SIZE.width / 20, "center");
+    level6.addObject('doortrigger', 22, 7, 'vertical', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+    const level7 = Level.fromASCII(`
+########################
+#                    # #
+#                    # #
+#                      #
+#                    # #
+#                    # #
+#                    # #
+#                    # #
+# C          B       # #
+###################### #
+            `, INITIAL_CANVAS_SIZE.width / 20);
+    level7.addObject('text', 7.5, 8.75, "2", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level7.addObject('scaletrigger', 7, 8, 'horizontal', 1, 2);
+    level7.addObject('doortrigger', 22, 7, 'vertical', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+
+    const level8 = Level.fromASCII(`
+##########################
+#                      # #
+#                      # #
+#                        #
+#      B                 #
+#  #########           # #
+#                      # #
+#               #      # #
+# C  B  #              # #
+######################## #
+            `, INITIAL_CANVAS_SIZE.width / 20);
+    level8.addObject('text', 5.5, 4.75, "2", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level8.addObject('text', 9.5, 4.75, "0.5", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level8.addObject('scaletrigger', 5, 4, 'horizontal', 1, 2);
+    level8.addObject('scaletrigger', 9, 4, 'horizontal', 1, 0.5);
+    level8.addObject('doortrigger', 24, 7, 'vertical', () => {
+        fadeInOut(1000, () => {
+            currentLevel++;
+            levels[currentLevel].start(canvas);
+            levels[currentLevel].draw(ctx);
+        });
+    });
+    const level9 = Level.fromASCII(`
+#####################
+#                 
+#                 
+#                 
+#                ####
+#                #
+#                #
+#                #
+#                #
+#                #
+#                #
+#                #
+#                #
+#    B           #
+#   #####        #
+#                #
+#                #
+# C  B           #
+##################
+            `, INITIAL_CANVAS_SIZE.width / 20);
+    level9.addObject('text', 7.5, 13.75, "0.5", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level9.addObject('text', 7.5, 17.75, "2", "red", INITIAL_CANVAS_SIZE.width / 30, "center");
+    level9.addObject('scaletrigger', 7, 13, 'horizontal', 1, 0.5);
+    level9.addObject('scaletrigger', 7, 17, 'horizontal', 1, 2);
+    var biggerExit = new DoorTrigger(17*INITIAL_CANVAS_SIZE.width / 20, INITIAL_CANVAS_SIZE.width / 20, INITIAL_CANVAS_SIZE.width / 20, 3*INITIAL_CANVAS_SIZE.width / 20, 'horizontal', () => {
+        fadeInOut(1000, () => {
+            loadEndingScreen();
+        });
+    });
+    level9.doorTriggers.push(biggerExit);
+    return [level1, level2, level3, level4, level5, level6, level7, level8, level9];
+}
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (keys.a) character.moveLeft();
-    if (keys.d) character.moveRight();
-    if (keys.w) character.jump();
-
-    boxes.forEach(box => box.update(platforms, boxes));
-    character.update(platforms, boxes);
-
-    platforms.forEach(platform => platform.draw(ctx));
-    boxes.forEach(box => box.draw(ctx));
-    
-    const allEntities = [character, ...boxes];
-    doorTriggers.forEach(trigger => {
-        trigger.checkTrigger(allEntities);
-        trigger.draw(ctx);
-    });
-    
-    character.draw(ctx);
-    // character.drawDebug(ctx);
+    levels[currentLevel].update();
+    levels[currentLevel].draw(ctx);
 
     requestAnimationFrame(gameLoop);
 }
 
-function initGame() {
-    canvas.width = window.innerWidth * 0.9;
-    canvas.height = window.innerHeight * 0.9;
-    character = new Character(600, 100, 50, 50, characterSprite);
-    platforms = [
-        new Platform(0, 0, 100, canvas.height-100, 'grey'),
-        new Platform(0, canvas.height-100, canvas.width, 100, 'grey'),
-        new Platform(canvas.width-100, 0, 100, canvas.height, 'grey'),
-        // new Platform(700, canvas.height-300, 50, 100, 'grey'),
-        // new Platform(900, canvas.height-200, 100, 100, 'grey'),
-    ];
-    let numberOfScales = 1;
-    let scaler = new DoorTrigger(800    , canvas.height-200, 200, 100, 'horizontal', (entity) => {
-        if (numberOfScales > 0) {
-            const newScale = 1.5;
-            entity.setScale(newScale);
-            entity.velocityX = 0;
-            entity.velocityY = 0;
-            numberOfScales--;
-            scaler.reset();
-        }
-        console.log(numberOfScales);
+let isInGame = false;
+function startGame() {
+    playGameSound(clickSound);
+    ctx = canvas.getContext('2d');
+
+    var mainFont = new FontFace('builtToScale', 'url(../BUILTTOSCALE.ttf)');
+    mainFont.load().then(function(font){
+        document.fonts.add(font);
+        console.log('Font loaded');
+        ctx.font = canvas.width / 20 + 'px builtToScale';
+        ctx.textAlign = 'left';
     });
-    doorTriggers = [
-        scaler
-    ];
-    boxes = [
-        new Box(400, canvas.height - 200, 50, 50, boxesSprite, ''),
-        new Box(200, canvas.height - 200, 50, 50, boxesSprite, ''),
-    ];
+    mainMenu.style.display = 'none';
+    settingsMenu.style.display = 'none';
+    canvas.style.display = 'block';
+    isInGame = true;
+    INITIAL_CANVAS_SIZE = {width: canvas.width, height: canvas.height};
+    levels = generateAndReturnLevels();
+    levels[currentLevel].start(canvas);
+    gameLoop();
 }
 
-initGame();
-gameLoop();
+function showEndGameSplash() {
+    document.getElementById("ending-splash").style.display = "flex";
+}
+
+function loadEndingScreen() {
+    currentLevel = 0;
+    levels = generateAndReturnLevels();
+    showMainMenu();
+    showEndGameSplash();
+};
+
+showMainMenu();
